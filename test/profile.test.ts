@@ -224,6 +224,7 @@ describe("Profile Function", () => {
     await kv.set("mem:profiles", "my-project", {
       project: "my-project",
       updatedAt: new Date().toISOString(),
+      memoryRecallVersion: 1,
       topConcepts: [],
       topFiles: [
         { file: "web-app", frequency: 5 },

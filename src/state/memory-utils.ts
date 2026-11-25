@@ -1,4 +1,4 @@
-import type { CompressedObservation, Lesson, Memory } from "../types.js";
+import type { CompressedObservation, Lesson, Memory, ProjectProfile } from "../types.js";
 
 const MAX_DATE_MS = 8.64e15;
 
@@ -14,6 +14,19 @@ export function supersededAt(previous: string | undefined, now: string): string 
 // the same searchable fields as observations (title + content +
 // ("memory" or memory.sessionIds[0]) is what enrich-side fallbacks key
 // off of when looking up the source record in KV.memories.
+export function isMemoryRecallable(
+  memory: Pick<Memory, "isLatest" | "forgetAfter">,
+  now = Date.now(),
+): boolean {
+  return memory.isLatest !== false &&
+    (memory.forgetAfter === undefined || Date.parse(memory.forgetAfter) > now);
+}
+
+export function isProfileRecallable(profile: ProjectProfile, now = Date.now()): boolean {
+  return profile.memoryRecallVersion === 1 &&
+    (profile.recallUntil === undefined || Date.parse(profile.recallUntil) > now);
+}
+
 export function memoryToObservation(memory: Memory): CompressedObservation {
   return {
     id: memory.id,

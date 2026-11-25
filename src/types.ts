@@ -374,6 +374,8 @@ export interface TimelineEntry {
 export interface ProjectProfile {
   project: string;
   updatedAt: string;
+  recallUntil?: string;
+  memoryRecallVersion?: 1;
   topConcepts: Array<{ concept: string; frequency: number }>;
   topFiles: Array<{ file: string; frequency: number }>;
   conventions: string[];

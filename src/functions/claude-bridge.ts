@@ -1,3 +1,4 @@
+import { isMemoryRecallable, isProfileRecallable } from "../state/memory-utils.js";
 import type { IIIClient } from "iii-sdk";
 import {
   closeSync, constants, existsSync, fstatSync, linkSync, lstatSync,
@@ -5,7 +6,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import type { Memory, ClaudeBridgeConfig } from "../types.js";
+import type { Memory, ClaudeBridgeConfig, ProjectProfile } from "../types.js";
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
 import { collectAll } from "../state/kv.js";
@@ -103,7 +104,7 @@ function serializeToMemoryMd(
   lines.push("");
 
   const sorted = [...memories]
-    .filter((m) => m.isLatest)
+    .filter((m) => isMemoryRecallable(m))
     .sort((a, b) => b.strength - a.strength);
 
   for (const mem of sorted) {
@@ -172,19 +173,19 @@ export function registerClaudeBridgeFunction(
         const project = resolveProject(config.projectPath);
         const memories = await collectAll<Memory>(kv, KV.memories);
         const latestMemories = memories.filter(
-          (m) => m.isLatest && (m.project === project || m.project === config.projectPath),
+          (m) => isMemoryRecallable(m) && (m.project === project || m.project === config.projectPath),
         );
 
         let profile = await kv
-          .get<{ summary?: string }>(KV.profiles, config.projectPath)
+          .get<ProjectProfile>(KV.profiles, config.projectPath)
           .catch(() => null);
         if (!profile && project !== config.projectPath) {
-          profile = await kv.get<{ summary?: string }>(KV.profiles, project).catch(() => null);
+          profile = await kv.get<ProjectProfile>(KV.profiles, project).catch(() => null);
         }
 
         const md = serializeToMemoryMd(
           latestMemories,
-          profile?.summary || "",
+          profile && isProfileRecallable(profile) ? profile.summary || "" : "",
           config.lineBudget,
         );
         const lines = md.split("\n").length;
