@@ -46,7 +46,7 @@ const SERVER_INFO = {
   version: VERSION,
 };
 
-const kv = new InMemoryKV(getStandalonePersistPath());
+const kv = new InMemoryKV(process.env["AGENTMEMORY_MCP_ONLY"] === "1" ? undefined : getStandalonePersistPath());
 let modeAnnounced = false;
 
 function displayAgentmemoryUrl(): string {
@@ -500,6 +500,11 @@ export async function handleToolCall(
   const handle = await resolveHandle();
   announceMode(handle);
 
+  if (process.env["AGENTMEMORY_MCP_ONLY"] === "1") {
+    if (handle.mode !== "proxy") throw new Error("MCP-only access requires a remote server");
+    return handleProxyGeneric(toolName, args, handle);
+  }
+
   if (!IMPLEMENTED_TOOLS.has(toolName)) {
     if (handle.mode === "proxy") {
       try {
@@ -537,8 +542,13 @@ export async function handleToolCall(
 
 export async function handleToolsList(): Promise<{ tools: unknown[] }> {
   const debug = process.env["AGENTMEMORY_DEBUG"] === "1" || process.env["AGENTMEMORY_DEBUG"] === "true";
+  const mcpOnly = process.env["AGENTMEMORY_MCP_ONLY"] === "1";
+  const remoteRequired = isProxyRequired() || mcpOnly;
   const handle = await resolveHandle();
   announceMode(handle);
+  if (mcpOnly && handle.mode !== "proxy") {
+    throw new Error("MCP-only access requires a remote server");
+  }
   if (debug) {
     process.stderr.write(
       `[@agentmemory/mcp] tools/list: handle.mode=${handle.mode}${handle.mode === "proxy" ? ` baseUrl=${handle.baseUrl}` : ""}\n`,
@@ -567,13 +577,13 @@ export async function handleToolsList(): Promise<{ tools: unknown[] }> {
         }
         return { tools: remote.tools };
       }
-      if (isProxyRequired()) throw new Error("AgentMemory returned an invalid tool inventory");
+      if (remoteRequired) throw new Error("AgentMemory returned an invalid tool inventory");
       process.stderr.write(
         `[@agentmemory/mcp] tools/list: server returned unexpected shape (no .tools array); falling back to local IMPLEMENTED_TOOLS list. Set AGENTMEMORY_DEBUG=1 to inspect response.\n`,
       );
     } catch (err) {
       invalidateHandle();
-      if (isAuthenticationError(err) || isProxyRequired()) throw err;
+      if (isAuthenticationError(err) || remoteRequired) throw err;
       process.stderr.write(
         `[@agentmemory/mcp] tools/list proxy failed: ${err instanceof Error ? err.message : String(err)}; falling back to local list\n`,
       );
