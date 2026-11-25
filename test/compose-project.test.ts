@@ -119,6 +119,16 @@ describe("Worker Compose project", () => {
     expect(composeEnvironment({ AGENTMEMORY_TOOLS: "core", VIEWER_ALLOWED_HOSTS: "example.test" }, "/tmp/state")).toMatchObject({ AGENTMEMORY_TOOLS: "core", VIEWER_ALLOWED_HOSTS: "example.test" });
   });
 
+  it("forwards scoped MCP policy through CLI and Docker worker configuration", () => {
+    const policy = { AGENTMEMORY_MCP_SECRET: "synthetic-scoped-only", AGENTMEMORY_MCP_ALLOWED_TOOLS: "memory_recall,memory_smart_search" };
+    const worker = parse(renderWorkerCompose(options({ workerEnvironment: policy })));
+    expect(worker.containers.agentmemory.environment).toMatchObject(policy);
+    expect(composeEnvironment(policy, "/tmp/state")).not.toHaveProperty("AGENTMEMORY_MCP_SECRET");
+    const dockerWorker = parse(readFileSync("deploy/runtime/worker-compose.yaml", "utf8"));
+    expect(dockerWorker.containers.agentmemory.environment.AGENTMEMORY_MCP_SECRET).toBe("${AGENTMEMORY_MCP_SECRET:-}");
+    expect(dockerWorker.containers.agentmemory.environment.AGENTMEMORY_MCP_ALLOWED_TOOLS).toBe("${AGENTMEMORY_MCP_ALLOWED_TOOLS:-}");
+  });
+
   it("gives CLI/shell tool and viewer settings precedence over conflicting env-file values", () => {
     const envPath = join(root, "precedence.env");
     mkdirSync(root, { recursive: true });

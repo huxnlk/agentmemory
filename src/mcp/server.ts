@@ -14,6 +14,7 @@ import { checkAuth, slotsDisabledResponse } from "../triggers/api.js";
 import { isSlotsEnabled } from "../functions/slots.js";
 import { LESSON_SOURCE_IDS_MAX, normalizeLessonSourceIds } from "../functions/lessons.js";
 import { getAgentId, isAgentScopeIsolated } from "../config.js";
+import { timingSafeCompare } from "../auth.js";
 type McpResponse = {
   status_code: number;
   headers?: Record<string, string>;
@@ -56,11 +57,34 @@ export function registerMcpEndpoints(
   secret?: string,
 ): void {
   const slotsEnabled = isSlotsEnabled();
+  const scopedSecret = process.env["AGENTMEMORY_MCP_SECRET"] || undefined;
+  const scopedTools = new Set((process.env["AGENTMEMORY_MCP_ALLOWED_TOOLS"] ??
+    "memory_recall,memory_smart_search").split(",").map(name => name.trim()).filter(Boolean));
+  if (scopedSecret !== undefined) {
+    if (!scopedSecret || !secret || timingSafeCompare(scopedSecret, secret)) {
+      throw new Error("Scoped MCP access requires distinct configured admin and MCP secrets");
+    }
+    const knownTools = new Set(getAllTools().map(tool => tool.name));
+    if ([...scopedTools].some(name => !knownTools.has(name))) {
+      throw new Error("Scoped MCP allowlist contains an unknown tool");
+    }
+  }
+  const authorizeTools = (req: HttpRequest):
+    { restricted: boolean } | { error: McpResponse } => {
+    const adminError = checkAuth(req, secret);
+    if (!adminError) return { restricted: false };
+    if (!scopedSecret || adminError.status_code !== 401) return { error: adminError };
+    const scopedError = checkAuth(req, scopedSecret);
+    return scopedError ? { error: scopedError } : { restricted: true };
+  };
   sdk.registerFunction("mcp::tools::list",
     async (req: HttpRequest): Promise<McpResponse> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
-      const tools = getVisibleTools().filter((t) => slotsEnabled || !isSlotTool(t.name));
+      const access = authorizeTools(req);
+      if ("error" in access) return access.error;
+      const visible = access.restricted
+        ? getAllTools().filter(tool => scopedTools.has(tool.name))
+        : getVisibleTools();
+      const tools = visible.filter((t) => slotsEnabled || !isSlotTool(t.name));
       return { status_code: 200, body: { tools } };
     },
   );
@@ -74,14 +98,18 @@ export function registerMcpEndpoints(
     async (
       req: HttpRequest<{ name: string; arguments: Record<string, unknown> }>,
     ): Promise<McpResponse> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
+      const access = authorizeTools(req);
+      if ("error" in access) return access.error;
 
       if (!req.body || typeof req.body.name !== "string") {
         return { status_code: 400, body: { error: "name is required" } };
       }
 
       const { name, arguments: args = {} } = req.body;
+
+      if (access.restricted && !scopedTools.has(name)) {
+        return { status_code: 403, body: { error: "Tool not permitted for scoped MCP credential" } };
+      }
 
       if (isSlotTool(name) && !slotsEnabled) return slotsDisabledResponse();
 
