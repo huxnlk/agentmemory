@@ -50,10 +50,10 @@ function fixture(saved: Memory, legacy = false, failMemoryReads = false) {
 }
 
 describe("original memory type metadata", () => {
-  it("keeps compact search working when the stored memory read fails", async () => {
+  it("fails closed when compact search cannot verify the stored memory deadline", async () => {
     const f = fixture(memory("bug"), false, true);
-    const compact = await f.call({ query: "Synthetic", agentId: "*", targetLayer: "memory", includeLessons: false });
-    expect(compact.results[0]).toMatchObject({ obsId: f.saved.id, type: "decision", memoryType: "bug" });
+    await expect(f.call({ query: "Synthetic", agentId: "*", targetLayer: "memory", includeLessons: false }))
+      .rejects.toThrow("state read failed");
   });
 
   it.each(types)("preserves %s without changing the observation type or input", (type) => {

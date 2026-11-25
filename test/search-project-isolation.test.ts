@@ -115,7 +115,7 @@ describe.each(["keyword", "hybrid", "hybrid-fallback"] as const)(
             sessionReads.push(key);
             if (failSessionReads) throw new Error("session store unavailable");
           }
-          if (scope === KV.observations("memory")) {
+          if (scope === KV.memories || scope === KV.observations("memory")) {
             memoryReads.push(key);
             activeObservationReads++;
             maxObservationReads = Math.max(maxObservationReads, activeObservationReads);
