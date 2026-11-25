@@ -1,6 +1,6 @@
 import { TriggerAction, type IIIClient } from "iii-sdk";
 import type { Memory, MemoryRelation } from "../types.js";
-import { memoryToObservation, observationEmbedText, supersededAt } from "../state/memory-utils.js";
+import { isMemoryRecallable, memoryToObservation, observationEmbedText, supersededAt } from "../state/memory-utils.js";
 import { memoryTitleFromContent } from "./remember.js";
 import {
   getSearchIndex,
@@ -304,7 +304,7 @@ export function registerRelationsFunction(sdk: IIIClient, kv: StateKV): void {
         visited.add(current.id);
 
         const memory = await kv.get<Memory>(KV.memories, current.id);
-        if (!memory) continue;
+        if (!memory || !isMemoryRecallable(memory)) continue;
 
         if (current.hop > 0) {
           const matchingRelations = allRelations.filter(

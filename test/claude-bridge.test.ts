@@ -251,8 +251,8 @@ describe("Claude Bridge Functions", () => {
       memory({ id: "old", isLatest: false, title: "Superseded title" }),
     ];
     for (const record of records) await kv.set(KV.memories, record.id, record);
-    await kv.set(KV.profiles, "my-project", { summary: "Canonical project summary" });
-    await kv.set(KV.profiles, "different-project", { summary: "Other project summary" });
+    await kv.set(KV.profiles, "my-project", { summary: "Canonical project summary", memoryRecallVersion: 1 });
+    await kv.set(KV.profiles, "different-project", { summary: "Other project summary", memoryRecallVersion: 1 });
     expect((await sync()).success).toBe(true);
     const content = readFileSync(config.memoryFilePath, "utf8");
     expect(content).toContain("Auth pattern");

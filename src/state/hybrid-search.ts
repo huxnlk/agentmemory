@@ -8,7 +8,7 @@ import type {
   Memory,
   QueryExpansion,
 } from "../types.js";
-import { memoryToObservation } from "./memory-utils.js";
+import { isMemoryRecallable, memoryToObservation } from "./memory-utils.js";
 import type { StateKV } from "./kv.js";
 import { KV } from "./schema.js";
 import {
@@ -400,7 +400,7 @@ export class HybridSearch {
         const mem = await this.kv
           .get<Memory>(KV.memories, r.obsId)
           .catch(() => null);
-        return mem ? { observation: memoryToObservation(mem), layer: "memory" as const } : null;
+        return mem && isMemoryRecallable(mem) ? { observation: memoryToObservation(mem), layer: "memory" as const } : null;
       }),
     );
     const enriched: HybridSearchResult[] = [];

@@ -1,3 +1,4 @@
+import { isMemoryRecallable } from "../state/memory-utils.js";
 import type { StateKV } from "../state/kv.js";
 import { createGraphIndexReader, getGraphIndexStatus } from "../state/graph-retrieval-index.js";
 import { lookupObservationSession } from "../state/obs-index.js";
@@ -103,7 +104,7 @@ export async function describeGraphNode(
       }
     }
     const memory = await read<Memory>(KV.memories, id);
-    if (memory?.isLatest !== false && memory?.id === id) {
+    if (memory?.id === id && isMemoryRecallable(memory)) {
       observationIds.push(id);
       memories.push({ id, title: memory.title, type: memory.type, project: memory.project, via: "observation" });
     }
@@ -125,7 +126,7 @@ export async function describeGraphNode(
   for (const hit of index.search(`${node.name} ${basename.replace(/\.[^.]+$/, "")}`, MAX_MEMORIES, "memory")) {
     if (memories.some((memory) => memory.id === hit.obsId)) continue;
     const memory = await reader.read<Memory>(KV.memories, hit.obsId);
-    if (!memory || memory.isLatest === false) continue;
+    if (!memory || !isMemoryRecallable(memory)) continue;
     const viaObservation = (memory.sourceObservationIds ?? []).some((id) => sourceSet.has(id));
     if (!viaObservation && !matchesName(memory.concepts, node.name) && !matchesName(memory.files, node.name)) continue;
     memories.push({ id: memory.id, title: memory.title, type: memory.type, project: memory.project, via: viaObservation ? "observation" : "name" });

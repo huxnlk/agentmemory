@@ -3,7 +3,7 @@ import { matchesSearchLayer, type SearchLayer, type SearchLayerResolver, type Se
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
 import { lookupObservationSession } from "../state/obs-index.js";
-import { memoryToObservation } from "../state/memory-utils.js";
+import { isMemoryRecallable, memoryToObservation } from "../state/memory-utils.js";
 import { createGraphIndexReader, getGraphIndexStatus, normalizeGraphIndexText, type GraphIndexReader } from "../state/graph-retrieval-index.js";
 
 export interface GraphRetrievalResult {
@@ -109,7 +109,7 @@ export class GraphQuery {
       const record = prior.layer === "memory"
         ? await read<Memory>(KV.memories, result.obsId)
         : await read<CompressedObservation>(KV.observations(result.sessionId), result.obsId);
-      if (!record || record.id !== result.obsId || ("isLatest" in record && record.isLatest === false)) continue;
+      if (!record || record.id !== result.obsId || ("content" in record && !isMemoryRecallable(record))) continue;
       if ("sessionId" in record && record.sessionId !== result.sessionId) continue;
       if (this.authorize && !await this.authorize(record, result.sessionId, read)) continue;
       current.push({ ...result, graphContext: `[graph evidence] ${record.title.slice(0, 512)}` });
@@ -143,7 +143,7 @@ export class GraphQuery {
         }
       }
       const memory = await read<Memory>(KV.memories, id);
-      if (!memory || memory.id !== id || memory.isLatest === false) return null;
+      if (!memory || memory.id !== id || !isMemoryRecallable(memory)) return null;
       const observation = memoryToObservation(memory);
       if (this.authorize && !await this.authorize(memory, observation.sessionId, read)) return null;
       return { observation, layer: "memory" as const };

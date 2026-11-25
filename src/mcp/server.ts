@@ -1,3 +1,4 @@
+import { isMemoryRecallable } from "../state/memory-utils.js";
 import type { IIIClient } from "iii-sdk";
 import type { HttpRequest } from "@iii-dev/helpers/http";
 import type { StateKV } from "../state/kv.js";
@@ -1505,7 +1506,7 @@ export function registerMcpEndpoints(
         if (uri === "agentmemory://memories/latest") {
           const memories = await collectAll<Memory>(kv, KV.memories);
           const latest = memories
-            .filter((m) => m.isLatest)
+            .filter((m) => isMemoryRecallable(m))
             .sort(
               (a, b) =>
                 new Date(b.updatedAt).getTime() -
@@ -1726,7 +1727,7 @@ export function registerMcpEndpoints(
               isolated && activeAgentId === undefined
                 ? []
                 : memories
-                    .filter((m) => m.isLatest)
+                    .filter((m) => isMemoryRecallable(m))
                     .filter(
                       (m) =>
                         activeAgentId === undefined ||

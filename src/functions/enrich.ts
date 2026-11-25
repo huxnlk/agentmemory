@@ -1,3 +1,4 @@
+import { isMemoryRecallable } from "../state/memory-utils.js";
 import type { IIIClient } from "iii-sdk";
 import type { Memory } from "../types.js";
 import { KV } from "../state/schema.js";
@@ -62,7 +63,7 @@ export function registerEnrichFunction(sdk: IIIClient, kv: StateKV): void {
             .filter(
               (m) =>
                 m.type === "bug" &&
-                m.isLatest &&
+                isMemoryRecallable(m) &&
                 // Guard only when both sides have an explicit project; unscoped memories pass through.
                 (!project || !m.project || m.project === project) &&
                 m.files.some((f) =>

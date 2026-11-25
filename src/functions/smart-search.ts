@@ -25,7 +25,7 @@ import {
 import { logger } from "../logger.js";
 import { withoutObservationSource } from "./observation-source.js";
 import { getCounters } from "../telemetry/setup.js";
-import { memoryToObservation } from "../state/memory-utils.js";
+import { isMemoryRecallable, memoryToObservation } from "../state/memory-utils.js";
 import { getSearchIndex } from "./search.js";
 
 export interface RecentSearch {
@@ -213,7 +213,15 @@ export function registerSmartSearchFunction(
       ]);
 
       const scopeResults = async (results: HybridSearchResult[]) => {
-        const layerResults = results.filter((result) => matchesSearchLayer(
+        const current = await Promise.all(results.map(async (result) => {
+          const layer = result.layer ?? getSearchIndex().layerOf(result.observation.id) ?? getSearchResultLayer(result.observation.id, result.sessionId);
+          if (layer !== "memory") return result;
+          const memory = await kv.get<Memory>(KV.memories, result.observation.id);
+          return memory && isMemoryRecallable(memory)
+            ? { ...result, observation: memoryToObservation(memory) }
+            : null;
+        }));
+        const layerResults = current.filter((result): result is HybridSearchResult => result !== null && matchesSearchLayer(
           result.observation.id,
           result.sessionId,
           targetLayer,
@@ -405,7 +413,7 @@ async function findObservation(
   sessionIdHint?: string,
 ): Promise<{ observation: CompressedObservation; layer: SearchResultLayer } | null> {
   const memory = await kv.get<Memory>(KV.memories, obsId);
-  if (memory) return { observation: memoryToObservation(memory), layer: "memory" };
+  if (memory) return isMemoryRecallable(memory) ? { observation: memoryToObservation(memory), layer: "memory" } : null;
 
   if (sessionIdHint) {
     const obs = await kv

@@ -1,3 +1,4 @@
+import { isMemoryRecallable } from "../state/memory-utils.js";
 import type { IIIClient } from "iii-sdk";
 import type { Memory, CompressedObservation, ContextBlock } from "../types.js";
 import { KV, generateId } from "../state/schema.js";
@@ -134,7 +135,7 @@ export function registerWorkingMemoryFunctions(
 
       const memories = await collectAll<Memory>(kv, KV.memories);
       const active = memories
-        .filter((m) => m.isLatest !== false)
+        .filter((m) => isMemoryRecallable(m))
         .sort((a, b) => {
           const strengthDiff = b.strength - a.strength;
           if (Math.abs(strengthDiff) > 0.2) return strengthDiff;

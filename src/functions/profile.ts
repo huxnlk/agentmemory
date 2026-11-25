@@ -1,3 +1,4 @@
+import { isMemoryRecallable, isProfileRecallable } from "../state/memory-utils.js";
 import type { IIIClient } from "iii-sdk";
 import type {
   CompressedObservation,
@@ -23,7 +24,7 @@ export function registerProfileFunction(sdk: IIIClient, kv: StateKV): void {
           .catch(() => null);
         if (cached) {
           const age = Date.now() - new Date(cached.updatedAt).getTime();
-          if (age < 3600_000) {
+          if (age < 3600_000 && isProfileRecallable(cached)) {
             const topFiles = cleanTopFiles(cached.topFiles || [], []);
             if (topFiles.length === (cached.topFiles || []).length) {
               return { profile: cached, cached: true };
@@ -94,8 +95,12 @@ export function registerProfileFunction(sdk: IIIClient, kv: StateKV): void {
 
       const memories = await collectAll<Memory>(kv, KV.memories)
         .catch(() => [] as Memory[]);
+      let recallUntil: string | undefined;
       for (const memory of memories) {
-        if (memory.project !== project || memory.isLatest === false) continue;
+        if (memory.project !== project || !isMemoryRecallable(memory)) continue;
+        if (memory.forgetAfter && (!recallUntil || Date.parse(memory.forgetAfter) < Date.parse(recallUntil))) {
+          recallUntil = memory.forgetAfter;
+        }
         for (const concept of memory.concepts || []) {
           conceptFreq.set(concept, (conceptFreq.get(concept) || 0) + 1);
         }
@@ -118,6 +123,8 @@ export function registerProfileFunction(sdk: IIIClient, kv: StateKV): void {
       const profile: ProjectProfile = {
         project,
         updatedAt: new Date().toISOString(),
+        memoryRecallVersion: 1,
+        ...(recallUntil ? { recallUntil } : {}),
         topConcepts,
         topFiles,
         conventions: extractConventions(topConcepts, topFiles),

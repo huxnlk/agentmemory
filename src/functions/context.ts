@@ -1,3 +1,4 @@
+import { isProfileRecallable } from "../state/memory-utils.js";
 import type { IIIClient } from "iii-sdk";
 import type {
   Session,
@@ -87,7 +88,7 @@ export function registerContextFunction(
           recency: Date.now(),
         });
       }
-      if (profile) {
+      if (profile && isProfileRecallable(profile)) {
         const profileParts = [];
         if (profile.topConcepts.length > 0) {
           profileParts.push(

@@ -9,7 +9,7 @@ import { getSearchResultLayer, isSearchLayer, matchesSearchLayer, type SearchLay
 import { SearchIndex, type SearchIndexRevision } from '../state/search-index.js'
 import { VectorIndex } from '../state/vector-index.js'
 import type { EmbeddingProvider } from '../types.js'
-import { memoryToObservation, observationEmbedText } from '../state/memory-utils.js'
+import { isMemoryRecallable, memoryToObservation, observationEmbedText } from '../state/memory-utils.js'
 import { buildRecallResponse, type RecallFormat } from "./recall-response.js";
 import { recordAccessBatch } from './access-tracker.js'
 import { logger } from "../logger.js";
@@ -376,7 +376,7 @@ export async function indexRecords(
   const revisions = new Map<Memory | CompressedObservation, SearchIndexRevision>()
   let count = 0
   for (const memory of memories) {
-    if (memory.isLatest === false || !memory.title || !memory.content) continue
+    if (!isMemoryRecallable(memory) || !memory.title || !memory.content) continue
     idx.add(memoryToObservation(memory), "memory")
     if (vectorEnabled) revisions.set(memory, idx.watchRevision(memory.id))
     count++
@@ -620,7 +620,7 @@ async function runKeywordRebuild(
   } else {
     memoriesLoaded = true
     for (const memory of memories) {
-      if (memory.isLatest === false) continue
+      if (!isMemoryRecallable(memory)) continue
       if (!memory.title || !memory.content) continue
       idx.add(memoryToObservation(memory), "memory")
       consider(memory.id, memory.sessionIds?.[0] ?? 'memory', observationEmbedText({ title: memory.title, narrative: memory.content, concepts: memory.concepts }), memory.createdAt, "memory")
@@ -874,13 +874,17 @@ export function registerSearchFunction(sdk: IIIClient, kv: StateKV): void {
         return pending
       }
 
-      const memoryProjectCache = new Map<string, string | null>()
+      const memoryCache = new Map<string, Promise<Memory | null>>()
+      const loadMemory = (obsId: string): Promise<Memory | null> => {
+        let pending = memoryCache.get(obsId)
+        if (!pending) {
+          pending = kv.get<Memory>(KV.memories, obsId).then(memory => memory ?? null)
+          memoryCache.set(obsId, pending)
+        }
+        return pending
+      }
       const loadMemoryProject = async (obsId: string): Promise<string | null> => {
-        if (memoryProjectCache.has(obsId)) return memoryProjectCache.get(obsId)!
-        const mem = await kv.get<Memory>(KV.memories, obsId)
-        const proj = mem?.project ?? null
-        memoryProjectCache.set(obsId, proj)
-        return proj
+        return (await loadMemory(obsId))?.project ?? null
       }
 
       const observationCache = new Map<string, Promise<{
@@ -942,15 +946,19 @@ export function registerSearchFunction(sdk: IIIClient, kv: StateKV): void {
               let pending = observationCache.get(key)
               if (!pending) {
                 pending = (async () => {
-                  if (r.observation) return { observation: r.observation, layer: r.layer ?? idx.layerOf(r.obsId) ?? getSearchResultLayer(r.obsId, r.sessionId) }
+                  if (layer === "memory") {
+                    const memory = await loadMemory(r.obsId)
+                    return memory && isMemoryRecallable(memory)
+                      ? { observation: memoryToObservation(memory), layer: "memory" as const }
+                      : null
+                  }
+                  if (r.observation) return { observation: r.observation, layer }
                   const obs = await kv
                     .get<CompressedObservation>(KV.observations(r.sessionId), r.obsId)
                     .catch(() => null)
                   if (obs) return { observation: obs, layer: "observation" as const }
-                  const mem = await kv
-                    .get<Memory>(KV.memories, r.obsId)
-                    .catch(() => null)
-                  return mem ? { observation: memoryToObservation(mem), layer: "memory" as const } : null
+                  const mem = await loadMemory(r.obsId).catch(() => null)
+                  return mem && isMemoryRecallable(mem) ? { observation: memoryToObservation(mem), layer: "memory" as const } : null
                 })()
                 observationCache.set(key, pending)
               }
